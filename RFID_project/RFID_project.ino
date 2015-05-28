@@ -1,7 +1,7 @@
 /*
 Projet de RFID
 Polytech' Montpellier
-Contributeur: Adrien Peyrouty
+Contributeurs: Adrien Peyrouty
               Bastien Boissin
               Elie Faes
 */

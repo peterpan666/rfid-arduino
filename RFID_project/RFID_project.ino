@@ -12,12 +12,24 @@ Contributeurs: Adrien Peyrouty
 #define SW_V2 9
 #define SW_PERIOD 100
 
+#define BIP_TASK_PERIOD 500
+#define BIP_DURATION 100
+#define BIP_IDLE   0
+#define BIP_START  1
+#define BIP_STOP   2
+#define BUZZER_PIN 6
+
 #define DEBUG false
 #define debug_println(...)   if (DEBUG) Serial.println(__VA_ARGS__)
 #define debug_print(...)     if (DEBUG) Serial.print(__VA_ARGS__)
 
-unsigned long sw_millis;
+unsigned long last_sw_task;
 unsigned char v1 = HIGH, v2 = LOW;
+
+unsigned char bip_state = BIP_IDLE;
+unsigned long last_bip_task = 0;
+unsigned long refresh_bip_task = 0;
+unsigned int tag_detected = 0;
 
 unsigned long last_write_task = 0;
 unsigned long temp = 0;
@@ -138,7 +150,7 @@ void main_connection_task(void)
 }
 
 void init_sw_task() {
-  sw_millis = 0;
+  last_sw_task = 0;
   pinMode(SW_V1, OUTPUT);
   pinMode(SW_V2, OUTPUT);
   digitalWrite(SW_V1, v1);
@@ -146,19 +158,57 @@ void init_sw_task() {
 }
 
 void main_sw_task() {
-  if (millis() < (sw_millis + SW_PERIOD))
+  if (millis() < (last_sw_task + SW_PERIOD))
     return;
   
-  sw_millis = millis();
+  last_sw_task = millis();
   v1 = v1 ? LOW : HIGH;
   v2 = v2 ? LOW : HIGH;
   digitalWrite(SW_V1, v1);
   digitalWrite(SW_V2, v2);
 }
 
+void init_bip_task(){
+  pinMode(BUZZER_PIN, OUTPUT); 
+}
+
+void main_bip_task() {
+  if (millis() < (last_bip_task + refresh_bip_task))
+    return;
+    
+  last_bip_task = millis();
+  
+  switch(bip_state){
+    case BIP_IDLE :
+      if (tag_detected > 0)
+        bip_state = BIP_START;
+      break;
+
+    case BIP_START :
+      if (tag_detected != 0) {
+        analogWrite(BUZZER_PIN, 800);
+        refresh_bip_task = BIP_DURATION;
+        bip_state = BIP_STOP;
+      } else {
+        bip_state = BIP_IDLE;
+        refresh_bip_task = BIP_TASK_PERIOD;
+      }
+      break;
+      
+    case BIP_STOP :
+      analogWrite(BUZZER_PIN, 0);
+      bip_state = BIP_START;
+      refresh_bip_task = BIP_TASK_PERIOD;
+      tag_detected--;
+      break;
+  }    
+  return;
+}
+
 void setup() {
   init_connection_task(); 
   init_sw_task();
+  init_bip_task();
   delay(1000);
 }
 
@@ -166,6 +216,7 @@ void loop() {
   main_write_task();
   main_connection_task();
   main_sw_task();
+  main_bip_task();
 }
 
 

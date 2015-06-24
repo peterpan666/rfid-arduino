@@ -5,9 +5,19 @@ Contributeurs: Adrien Peyrouty
               Bastien Boissin
               Elie Faes
 */
-
 #include <SPI.h>
 #include <Ethernet.h>
+
+#define SW_V1 8
+#define SW_V2 9
+#define SW_PERIOD 100
+
+#define DEBUG false
+#define debug_println(...)   if (DEBUG) Serial.println(__VA_ARGS__)
+#define debug_print(...)     if (DEBUG) Serial.print(__VA_ARGS__)
+
+unsigned long sw_millis;
+unsigned char v1 = HIGH, v2 = LOW;
 
 unsigned long last_write_task = 0;
 unsigned long temp = 0;
@@ -39,22 +49,23 @@ EthernetClient client;
 
 boolean ethernet_init()
 {
+  debug_print("Ethernet init... ");
   if (Ethernet.begin(mac) == 0) {
-    Serial.println("Failed to configure Ethernet using DHCP");
+    debug_println("Failed to configure Ethernet using DHCP");
     // no point in carrying on, so do nothing forevermore:
     // try to congifure using IP address instead of DHCP:
     //Ethernet.begin(mac, ip)
     //return true;
     return false;
   } else {
-    Serial.println("DHCP OK");
+    debug_println("DHCP OK");
     return true;
   }
 }
 
 void main_write_task(void)
 {
-    if (millis() < last_write_task + 100) {
+    if (millis() < last_write_task + 4000) {
       return;
     }
     
@@ -63,8 +74,13 @@ void main_write_task(void)
     send_buffer[send_write++] = temp++;
 }
 
+void init_connection_task() {
+  while (!ethernet_init());
+}
+
 void main_connection_task(void)
 {
+    
     if (millis() < last_connection_task + refresh_connection_task) {
       return;
     }
@@ -90,15 +106,15 @@ void main_connection_task(void)
     
     String data_start = "{\"room\":\"" + room + "\",\"tag_id\":[";
     
-    Serial.println();
-    Serial.println(data);
-    Serial.println();
+    debug_println();
+    debug_println(data);
+    debug_println();
     
-    Serial.println("connecting...");
+    debug_println("connecting...");
     
     if (client.connect(server, 80)) {
-      Serial.println("connected");
-      Serial.println("sending POST request");
+      debug_println("connected");
+      debug_println("sending POST request");
       // Make a HTTP request:
       client.println("POST /classroom/store HTTP/1.0");
       client.print("Host: ");
@@ -110,28 +126,46 @@ void main_connection_task(void)
       client.print(data);
       client.print("]}");
       
-      Serial.println();
-      Serial.println("disconnecting.");
+      debug_println();
+      debug_println("disconnecting.");
       client.stop();
     } 
     else {
       // kf you didn't get a connection to the server:
-      Serial.println("connection failed");
+      debug_println("connection failed");
       return;
     }
 }
 
-void setup() {                
-  Serial.begin(57600);
+void init_sw_task() {
+  sw_millis = 0;
+  pinMode(SW_V1, OUTPUT);
+  pinMode(SW_V2, OUTPUT);
+  digitalWrite(SW_V1, v1);
+  digitalWrite(SW_V2, v2);
+}
+
+void main_sw_task() {
+  if (millis() < (sw_millis + SW_PERIOD))
+    return;
   
-  Serial.println("Initialisation");
-  
-  while (!ethernet_init());
-  
+  sw_millis = millis();
+  v1 = v1 ? LOW : HIGH;
+  v2 = v2 ? LOW : HIGH;
+  digitalWrite(SW_V1, v1);
+  digitalWrite(SW_V2, v2);
+}
+
+void setup() {
+  init_connection_task(); 
+  init_sw_task();
   delay(1000);
 }
 
 void loop() {
-  //main_write_task();
+  main_write_task();
   main_connection_task();
+  main_sw_task();
 }
+
+

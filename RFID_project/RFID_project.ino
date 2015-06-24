@@ -8,9 +8,11 @@ Contributeurs: Adrien Peyrouty
 #include <SPI.h>
 #include <Ethernet.h>
 
+
 #define SW_V1 8
 #define SW_V2 9
 #define SW_PERIOD 100
+#define BUFFER_LENGHT  256
 
 #define BIP_TASK_PERIOD 500
 #define BIP_DURATION 100
@@ -29,13 +31,22 @@ unsigned char v1 = HIGH, v2 = LOW;
 unsigned char bip_state = BIP_IDLE;
 unsigned long last_bip_task = 0;
 unsigned long refresh_bip_task = 0;
-unsigned int tag_detected = 0;
 
 unsigned long last_write_task = 0;
+unsigned long refresh_write_task = 100;
+unsigned int tag_detected = 0;
+
 unsigned long temp = 0;
 
 unsigned long last_connection_task = 0;
 unsigned long refresh_connection_task = 3000;
+
+unsigned long last_reading_task = 0;
+unsigned long refresh_reading_task = 500;
+
+// Sequence to send to the reader to make a complete inventory
+byte inventory[] = { 0x00, 0x08, 0x00, 0x01, 0xAA, 0x55, 0x00, 0x00 };
+char data_buffer[BUFFER_LENGHT];
 
 unsigned int send_buffer[256] = {0};
 byte send_write = 0;
@@ -73,17 +84,6 @@ boolean ethernet_init()
     debug_println("DHCP OK");
     return true;
   }
-}
-
-void main_write_task(void)
-{
-    if (millis() < last_write_task + 4000) {
-      return;
-    }
-    
-    last_write_task = millis();
-    
-    send_buffer[send_write++] = temp++;
 }
 
 void init_connection_task() {
@@ -149,6 +149,54 @@ void main_connection_task(void)
     }
 }
 
+void init_reading_task()
+{
+  Serial.begin(115200);
+  debug_println("Initialisation");
+}
+
+void main_reading_task(void)
+{
+    if (millis() < last_reading_task + refresh_reading_task) 
+    {
+      return;
+    }
+    
+    last_reading_task = millis();
+    Serial.write(inventory, sizeof(inventory)); //send the command to start new inventory  
+}
+
+void main_write_task(void)
+{
+    int i, NbTags = 0;
+    
+    if (millis() < last_write_task + refresh_write_task) {
+      return;
+    }
+    
+    last_write_task = millis();
+    
+    if(Serial.available())
+    { 
+      Serial.readBytes(data_buffer, 5);
+      if(data_buffer[0] == 0x00 && data_buffer[1] == 0x01)
+      {
+        NbTags = data_buffer[4];
+        tag_detected += NbTags;
+        
+        for(i=0; i<NbTags; i++)
+        {
+          Serial.readBytes(data_buffer, 1);    //EPClen
+          
+          Serial.readBytes(data_buffer, 12);   //EPC
+          //send_buffer[send_write++] = temp++;
+          
+          Serial.readBytes(data_buffer, 3);    // AntID + Nbread
+        } 
+      }
+    }           
+}
+
 void init_sw_task() {
   last_sw_task = 0;
   pinMode(SW_V1, OUTPUT);
@@ -160,13 +208,13 @@ void init_sw_task() {
 void main_sw_task() {
   if (millis() < (last_sw_task + SW_PERIOD))
     return;
-  
+    
   last_sw_task = millis();
   v1 = v1 ? LOW : HIGH;
   v2 = v2 ? LOW : HIGH;
   digitalWrite(SW_V1, v1);
   digitalWrite(SW_V2, v2);
-}
+} 
 
 void init_bip_task(){
   pinMode(BUZZER_PIN, OUTPUT); 
@@ -209,14 +257,16 @@ void setup() {
   init_connection_task(); 
   init_sw_task();
   init_bip_task();
+  init_reading_task();
   delay(1000);
 }
 
 void loop() {
-  main_write_task();
   main_connection_task();
   main_sw_task();
   main_bip_task();
+  main_reading_task();
+  main_write_task();
 }
 
 

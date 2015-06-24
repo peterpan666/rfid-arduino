@@ -48,11 +48,12 @@ unsigned long refresh_reading_task = 500;
 byte inventory[] = { 0x00, 0x08, 0x00, 0x01, 0xAA, 0x55, 0x00, 0x00 };
 char data_buffer[BUFFER_LENGHT];
 
-unsigned int send_buffer[256] = {0};
+//char send_buffer[256][12] = {0};
+int send_buffer[256] = {0};
 byte send_write = 0;
 byte send_read = 0;
 
-String room = "SE2";
+String room = "";
 
 // Enter a MAC address for your controller below.
 // Newer Ethernet shields have a MAC address printed on a sticker on the shield
@@ -168,8 +169,8 @@ void main_reading_task(void)
 
 void main_write_task(void)
 {
-    int i, NbTags = 0;
-    
+    int i, j, NbTags = 0;
+    String Character;
     if (millis() < last_write_task + refresh_write_task) {
       return;
     }
@@ -188,10 +189,18 @@ void main_write_task(void)
         {
           Serial.readBytes(data_buffer, 1);    //EPClen
           
-          Serial.readBytes(data_buffer, 12);   //EPC
-          //send_buffer[send_write++] = temp++;
+          Serial.readBytes(data_buffer, 12);   //EPC (Id tag)
+          send_buffer[send_write] = 1;
+          
+          for(j=0; j<12; j++)
+          {
+            Character = String(data_buffer[j]);
+            room += Character;
+          }
           
           Serial.readBytes(data_buffer, 3);    // AntID + Nbread
+          
+          send_write++;
         } 
       }
     }           

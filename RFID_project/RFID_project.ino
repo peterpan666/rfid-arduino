@@ -12,7 +12,7 @@ Contributeurs: Adrien Peyrouty
 #define SW_V1 8
 #define SW_V2 9
 #define SW_PERIOD 100
-#define BUFFER_LENGHT  256
+#define BUFFER_LENGHT  20
 
 #define BIP_TASK_PERIOD 500
 #define BIP_DURATION 100
@@ -21,7 +21,7 @@ Contributeurs: Adrien Peyrouty
 #define BIP_STOP   2
 #define BUZZER_PIN 6
 
-#define DEBUG false
+#define DEBUG true
 #define debug_println(...)   if (DEBUG) Serial.println(__VA_ARGS__)
 #define debug_print(...)     if (DEBUG) Serial.print(__VA_ARGS__)
 
@@ -30,30 +30,30 @@ unsigned char v1 = HIGH, v2 = LOW;
 
 unsigned char bip_state = BIP_IDLE;
 unsigned long last_bip_task = 0;
-unsigned long refresh_bip_task = 0;
+unsigned long refresh_bip_task = BIP_TASK_PERIOD;
 
 unsigned long last_write_task = 0;
-unsigned long refresh_write_task = 100;
-unsigned int tag_detected = 0;
+unsigned long refresh_write_task = 300;
+unsigned int tag_detected = 1;
 
 unsigned long temp = 0;
 
 unsigned long last_connection_task = 0;
-unsigned long refresh_connection_task = 3000;
+unsigned long refresh_connection_task = 5000;
 
 unsigned long last_reading_task = 0;
-unsigned long refresh_reading_task = 500;
+unsigned long refresh_reading_task = 1000;
 
 // Sequence to send to the reader to make a complete inventory
-byte inventory[] = { 0x00, 0x08, 0x00, 0x01, 0xAA, 0x55, 0x00, 0x00 };
+byte inventory[] = { 0x02, 0x00, 0x08, 0x00, 0x00, 0x00, 0x08, 0x00, 0x01, 0xAA, 0x55, 0x00, 0x00, 0x28, 0x68 };
 char data_buffer[BUFFER_LENGHT];
 
-//char send_buffer[256][12] = {0};
-int send_buffer[256] = {0};
+String send_buffer[32];
+String Id;
 byte send_write = 0;
 byte send_read = 0;
 
-String room = "";
+String room = "SE2";
 
 // Enter a MAC address for your controller below.
 // Newer Ethernet shields have a MAC address printed on a sticker on the shield
@@ -101,16 +101,22 @@ void main_connection_task(void)
     last_connection_task = millis();
     
     String data;
-    
+    char buffer[30] = {0};
     int i = 0;
     
     while (send_write != send_read) {
-      data += String(send_buffer[send_read++]) + ',';
+      
+      send_buffer[send_read++].toCharArray(buffer,12);
+      data += String(buffer);
+      if(send_read >= 31)
+            send_read = 0;
+      data += ',';
+      
       if (++i >= 10) {
         break;
       }
     }
-    
+    debug_println(data);
     data = data.substring(0, data.length() - 1);
     
     if (data.length() == 0) {
@@ -152,8 +158,9 @@ void main_connection_task(void)
 
 void init_reading_task()
 {
-  Serial.begin(115200);
   debug_println("Initialisation");
+  delay(500);
+  Serial.flush(); 
 }
 
 void main_reading_task(void)
@@ -164,46 +171,53 @@ void main_reading_task(void)
     }
     
     last_reading_task = millis();
+    Serial.flush();
     Serial.write(inventory, sizeof(inventory)); //send the command to start new inventory  
 }
 
 void main_write_task(void)
 {
-    int i, j, NbTags = 0;
-    String Character;
+    int i, NbTags = 0;
+    
     if (millis() < last_write_task + refresh_write_task) {
       return;
     }
     
     last_write_task = millis();
-    
+    //tag_detected++;
     if(Serial.available())
-    { 
-      Serial.readBytes(data_buffer, 5);
-      if(data_buffer[0] == 0x00 && data_buffer[1] == 0x01)
+    {
+      
+      Serial.readBytes(data_buffer, 7);
+      if(data_buffer[0] == 0x02)
       {
-        NbTags = data_buffer[4];
+        Serial.readBytes(data_buffer, 3);
+        NbTags = data_buffer[2];
         tag_detected += NbTags;
+        //tag_detected += 3;
         
         for(i=0; i<NbTags; i++)
         {
+          //digitalWrite(3, 1);
           Serial.readBytes(data_buffer, 1);    //EPClen
+
+          Serial.readBytes(data_buffer, 12);   //EPC
           
-          Serial.readBytes(data_buffer, 12);   //EPC (Id tag)
-          send_buffer[send_write] = 1;
-          
-          for(j=0; j<12; j++)
+          for(unsigned int j=0; j<12; j++)
           {
-            Character = String(data_buffer[j]);
-            room += Character;
+            send_buffer[send_write] += data_buffer[j];
           }
-          
-          Serial.readBytes(data_buffer, 3);    // AntID + Nbread
-          
           send_write++;
+          
+          if(send_write >= 31)
+            send_write = 0;
+            
+          Serial.readBytes(data_buffer, 3);    // AntID + Nbread
+          //digitalWrite(3, 0);
         } 
       }
-    }           
+     Serial.flush(); 
+    } 
 }
 
 void init_sw_task() {
@@ -226,7 +240,7 @@ void main_sw_task() {
 } 
 
 void init_bip_task(){
-  pinMode(BUZZER_PIN, OUTPUT); 
+  pinMode(BUZZER_PIN, OUTPUT);
 }
 
 void main_bip_task() {
@@ -263,8 +277,9 @@ void main_bip_task() {
 }
 
 void setup() {
+  Serial.begin(115200);
   init_connection_task(); 
-  init_sw_task();
+  //init_sw_task();
   init_bip_task();
   init_reading_task();
   delay(1000);
@@ -272,7 +287,7 @@ void setup() {
 
 void loop() {
   main_connection_task();
-  main_sw_task();
+  //main_sw_task();
   main_bip_task();
   main_reading_task();
   main_write_task();

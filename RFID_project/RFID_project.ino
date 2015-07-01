@@ -21,7 +21,9 @@ Contributeurs: Adrien Peyrouty
 #define BIP_STOP   2
 #define BUZZER_PIN 6
 
+#define MEGA
 #define DEBUG false
+
 #define debug_println(...)   if (DEBUG) Serial.println(__VA_ARGS__)
 #define debug_print(...)     if (DEBUG) Serial.print(__VA_ARGS__)
 
@@ -191,8 +193,12 @@ void main_reading_task(void)
     }
     debug_print("start reading ...");
     last_reading_task = millis();
-  
-    Serial1.write(inventory, sizeof(inventory)); //send the command to start new inventory
+    #ifdef MEGA
+      Serial1.write(inventory, sizeof(inventory)); //send the command to start new inventory
+    #else
+      Serial.write(inventory, sizeof(inventory)); //send the command to start new inventory
+    #endif
+    
     debug_println(" End reading"); 
     //Flag_request = true; 
     //Flag_response = false;
@@ -219,11 +225,18 @@ void main_write_task(void)
     debug_print("start writing...");
     last_write_task = millis();
     
-    if(Serial1.available())
+    #ifdef MEGA
+      if(Serial1.available())
+    #else defined UNO
+      if(Serial.available())
+    #endif
     {
       //Flag_response = true;
-      
-      Serial1.readBytes(header_buffer, 9);
+      #ifdef MEGA
+        Serial1.readBytes(header_buffer, 9);
+      #else defined UNO
+        Serial.readBytes(header_buffer, 9);
+      #endif  
       if(header_buffer[0] == 0x02 && header_buffer[6] == 0x01)
       {
         unsigned int Lin = header_buffer[7]*256 + header_buffer[8];
@@ -239,8 +252,11 @@ void main_write_task(void)
          Flag_request = false;
          return;
         }
-         
-        Serial1.readBytes(data_buffer, Lin);
+        #ifdef MEGA 
+          Serial1.readBytes(data_buffer, Lin);
+        #else defined UNO
+          Serial.readBytes(data_buffer, Lin);
+        #endif  
         
         NbTags = data_buffer[0];
         tag_detected += NbTags;
@@ -254,10 +270,17 @@ void main_write_task(void)
             send_write = 0;
         }
       }
-      while(Serial1.available())
-      {
-        Serial1.readBytes(&vide, 1);
-      }
+      #ifdef MEGA 
+        while(Serial1.available())
+        {
+          Serial1.readBytes(&vide, 1);
+        }
+      #else
+        while(Serial.available())
+        {
+          Serial.readBytes(&vide, 1);
+        }
+      #endif 
     } 
    debug_println(" end writing");
    //Flag_request = false;
@@ -324,7 +347,9 @@ void main_bip_task() {
 
 void setup() {
   Serial.begin(115200);
-  Serial1.begin(115200);
+  #ifdef MEGA
+    Serial1.begin(115200);
+  #endif
   init_connection_task(); 
   //init_sw_task();
   init_bip_task();

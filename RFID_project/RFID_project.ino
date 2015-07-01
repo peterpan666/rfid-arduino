@@ -12,7 +12,7 @@ Contributeurs: Adrien Peyrouty
 #define SW_V1 8
 #define SW_V2 9
 #define SW_PERIOD 100
-#define BUFFER_LENGHT  20
+#define BUFFER_LENGHT  255
 
 #define BIP_TASK_PERIOD 100
 #define BIP_DURATION 100
@@ -21,7 +21,7 @@ Contributeurs: Adrien Peyrouty
 #define BIP_STOP   2
 #define BUZZER_PIN 6
 
-#define DEBUG true
+#define DEBUG false
 #define debug_println(...)   if (DEBUG) Serial.println(__VA_ARGS__)
 #define debug_print(...)     if (DEBUG) Serial.print(__VA_ARGS__)
 
@@ -33,7 +33,7 @@ unsigned long last_bip_task = 0;
 unsigned long refresh_bip_task = BIP_TASK_PERIOD;
 
 unsigned long last_write_task = 0;
-unsigned long refresh_write_task = 300;
+unsigned long refresh_write_task = 200;
 unsigned int tag_detected = 1;
 
 unsigned long temp = 0;
@@ -45,13 +45,14 @@ unsigned long last_reading_task = 0;
 unsigned long refresh_reading_task = 1000;
 
 // Sequence to send to the reader to make a complete inventory
-byte inventory[] = { 0x02, 0x00, 0x08, 0x00, 0x00, 0x00, 0x08, 0x00, 0x01, 0xAA, 0x55, 0x00, 0x00, 0x28, 0x68 };
-char data_buffer[BUFFER_LENGHT];
+byte inventory[] = { 0x02,0x00,0x08,0x00,0x00,0x00,0x08,0x00,0x01,0xAA,0x55,0x00,0x00,0x28,0x68 };
+
 char send_buffer[32][12];
 
 byte send_write = 0;
 byte send_read = 0;
-
+boolean Flag_request = false;
+boolean Flag_response = true;
 String room = "SE2";
 
 // Enter a MAC address for your controller below.
@@ -134,7 +135,7 @@ void main_connection_task(void)
         break;
       }
     }
-    debug_println(data);
+    //debug_println(data);
     data = data.substring(0, data.length() - 1);
     
     if (data.length() == 0) {
@@ -176,61 +177,92 @@ void main_connection_task(void)
 
 void init_reading_task()
 {
-  debug_println("Initialisation");
+  debug_println("Initialisation reading");
   delay(500);
   Serial.flush(); 
 }
 
 void main_reading_task(void)
 {
-    if (millis() < last_reading_task + refresh_reading_task) 
+    if (millis() < last_reading_task + refresh_reading_task /*&& !Flag_response*/) 
     {
       return;
     }
-    
+    debug_print("start reading ...");
     last_reading_task = millis();
-    Serial.flush();
-    Serial.write(inventory, sizeof(inventory)); //send the command to start new inventory  
+  
+    Serial1.write(inventory, sizeof(inventory)); //send the command to start new inventory
+    debug_println(" End reading"); 
+    //Flag_request = true; 
+    //Flag_response = false;
+}
+
+void my_memcpy(char* desti, char* source, int Nbyte, int offset)
+{
+  for(int i =0; i< Nbyte; i++)
+  {
+    desti[i] = source[i + offset];
+  }  
 }
 
 void main_write_task(void)
 {
-    int i, NbTags = 0;
+    unsigned int i, NbTags = 0;
+    char vide = 0;
+    char header_buffer[BUFFER_LENGHT] = {0};
+    char data_buffer[BUFFER_LENGHT] = {0};
     
-    if (millis() < last_write_task + refresh_write_task) {
+    if (millis() < last_write_task + refresh_write_task /*&& !Flag_request*/) {
       return;
     }
-    
+    debug_print("start writing...");
     last_write_task = millis();
-    //tag_detected++;
-    if(Serial.available())
+    
+    if(Serial1.available())
     {
+      //Flag_response = true;
       
-      Serial.readBytes(data_buffer, 7);
-      if(data_buffer[0] == 0x02)
+      Serial1.readBytes(header_buffer, 9);
+      if(header_buffer[0] == 0x02 && header_buffer[6] == 0x01)
       {
-        Serial.readBytes(data_buffer, 3);
-        NbTags = data_buffer[2];
+        unsigned int Lin = header_buffer[7]*256 + header_buffer[8];
+        debug_print("Lin = ");
+        debug_println(Lin, DEC);
+        for(unsigned int j=0; j<9; j++)
+        {
+          debug_print(header_buffer[j], HEX);
+          debug_print(" ");
+        }
+        if(Lin < 17)
+        {
+         Flag_request = false;
+         return;
+        }
+         
+        Serial1.readBytes(data_buffer, Lin);
+        
+        NbTags = data_buffer[0];
         tag_detected += NbTags;
-        //tag_detected += 3;
+        debug_print("\n\r Nombre de tags = ");
+        debug_println(NbTags);
         
         for(i=0; i<NbTags; i++)
         {
-          //digitalWrite(3, 1);
-          Serial.readBytes(data_buffer, 1);    //EPClen
-
-          Serial.readBytes(send_buffer[send_write++], 12);   //EPC
-
+          my_memcpy(send_buffer[send_write++], data_buffer, 12, 2 + (16 * i));
           if(send_write >= 31)
             send_write = 0;
-           
-          Serial.readBytes(data_buffer, 3);    // AntID + Nbread
-          //digitalWrite(3, 0);
-        } 
+        }
       }
-     Serial.flush(); 
+      while(Serial1.available())
+      {
+        Serial1.readBytes(&vide, 1);
+      }
     } 
+   debug_println(" end writing");
+   //Flag_request = false;
 }
+
+
 
 void init_sw_task() {
   last_sw_task = 0;
@@ -257,8 +289,7 @@ void init_bip_task(){
 
 void main_bip_task() {
   if (millis() < (last_bip_task + refresh_bip_task))
-    return;
-    
+    return; 
   last_bip_task = millis();
   
   switch(bip_state){
@@ -290,11 +321,13 @@ void main_bip_task() {
 
 void setup() {
   Serial.begin(115200);
+  Serial1.begin(115200);
   init_connection_task(); 
   //init_sw_task();
   init_bip_task();
   init_reading_task();
   delay(1000);
+  
 }
 
 void loop() {

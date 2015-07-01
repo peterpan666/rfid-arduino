@@ -53,6 +53,7 @@ byte send_write = 0;
 byte send_read = 0;
 boolean Flag_request = false;
 boolean Flag_response = true;
+boolean Flag_bip = false;
 String room = "SE2";
 
 // Enter a MAC address for your controller below.
@@ -300,6 +301,7 @@ void main_bip_task() {
 
     case BIP_START :
       if (tag_detected != 0) {
+        Flag_bip = true;
         analogWrite(BUZZER_PIN, 800);
         refresh_bip_task = BIP_DURATION;
         bip_state = BIP_STOP;
@@ -310,6 +312,7 @@ void main_bip_task() {
       break;
       
     case BIP_STOP :
+      Flag_bip = false;
       analogWrite(BUZZER_PIN, 0);
       bip_state = BIP_START;
       refresh_bip_task = BIP_TASK_PERIOD;
@@ -331,11 +334,16 @@ void setup() {
 }
 
 void loop() {
-  main_connection_task();
-  //main_sw_task();
+  
+  
   main_bip_task();
-  main_reading_task();
-  main_write_task();
+  //main_sw_task();
+  if(!Flag_bip)
+  {
+    main_connection_task();  
+    main_reading_task();
+    main_write_task();
+  }
 }
 
 

@@ -14,7 +14,7 @@ Contributeurs: Adrien Peyrouty
 #define SW_PERIOD 100
 #define BUFFER_LENGHT  20
 
-#define BIP_TASK_PERIOD 500
+#define BIP_TASK_PERIOD 100
 #define BIP_DURATION 100
 #define BIP_IDLE   0
 #define BIP_START  1
@@ -47,9 +47,8 @@ unsigned long refresh_reading_task = 1000;
 // Sequence to send to the reader to make a complete inventory
 byte inventory[] = { 0x02, 0x00, 0x08, 0x00, 0x00, 0x00, 0x08, 0x00, 0x01, 0xAA, 0x55, 0x00, 0x00, 0x28, 0x68 };
 char data_buffer[BUFFER_LENGHT];
+char send_buffer[32][12];
 
-String send_buffer[32];
-String Id;
 byte send_write = 0;
 byte send_read = 0;
 
@@ -91,6 +90,18 @@ void init_connection_task() {
   while (!ethernet_init());
 }
 
+void htoa(char h[12], char s[24]) 
+{
+ char low, high;
+ for (int i = 0; i < 12; i++) 
+ {
+    low = h[i] & 0x0f;
+    high = (h[i] >> 4) & 0x0f;
+    s[i*2 + 1] = low < 10 ? low + 48 : low + 65 - 10;
+    s[i*2] = high < 10 ? high + 48 : high + 65 - 10;
+ }
+}
+
 void main_connection_task(void)
 {
     
@@ -101,17 +112,24 @@ void main_connection_task(void)
     last_connection_task = millis();
     
     String data;
-    char buffer[30] = {0};
+    char buffer[24] = {0};
     int i = 0;
     
     while (send_write != send_read) {
       
-      send_buffer[send_read++].toCharArray(buffer,12);
-      data += String(buffer);
+      data += "\"";
+      htoa(send_buffer[send_read], buffer);
+      
+      for(unsigned int j=0; j<24; j++)
+      {
+        data += String(buffer[j]);
+      }
+      data += "\",";
+      
+      send_read++;
       if(send_read >= 31)
             send_read = 0;
-      data += ',';
-      
+
       if (++i >= 10) {
         break;
       }
@@ -201,17 +219,11 @@ void main_write_task(void)
           //digitalWrite(3, 1);
           Serial.readBytes(data_buffer, 1);    //EPClen
 
-          Serial.readBytes(data_buffer, 12);   //EPC
-          
-          for(unsigned int j=0; j<12; j++)
-          {
-            send_buffer[send_write] += data_buffer[j];
-          }
-          send_write++;
-          
+          Serial.readBytes(send_buffer[send_write++], 12);   //EPC
+
           if(send_write >= 31)
             send_write = 0;
-            
+           
           Serial.readBytes(data_buffer, 3);    // AntID + Nbread
           //digitalWrite(3, 0);
         } 

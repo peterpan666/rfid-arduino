@@ -11,7 +11,7 @@ Contributeurs: Adrien Peyrouty
 
 #define SW_V1 8
 #define SW_V2 9
-#define SW_PERIOD 100
+#define SW_PERIOD 1000
 #define BUFFER_LENGHT  255
 
 #define BIP_TASK_PERIOD 100
@@ -21,7 +21,7 @@ Contributeurs: Adrien Peyrouty
 #define BIP_STOP   2
 #define BUZZER_PIN 6
 
-#define MEGA
+//#define MEGA
 #define DEBUG false
 
 #define debug_println(...)   if (DEBUG) Serial.println(__VA_ARGS__)
@@ -351,7 +351,7 @@ void setup() {
     Serial1.begin(115200);
   #endif
   init_connection_task(); 
-  //init_sw_task();
+  init_sw_task();
   init_bip_task();
   init_reading_task();
   delay(1000);
@@ -362,7 +362,7 @@ void loop() {
   
   
   main_bip_task();
-  //main_sw_task();
+  main_sw_task();
   if(!Flag_bip)
   {
     main_connection_task();  

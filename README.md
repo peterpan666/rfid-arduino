@@ -12,3 +12,5 @@ Les schéma, PCB et fichiers Gerber ont été générés avec le logiciel Diptra
 
 ##Boitier
 Tous les fichiers (.stl et .step) ont été générés avec le logiciel Solidworks
+
+![vue éclatée](https://raw.githubusercontent.com/peterpan666/rfid-arduino/master/Boitier/eclatee.JPG)
